@@ -9,51 +9,34 @@ try:
 except ImportError:
     openai = None
 
-try:
-    import anthropic
-except ImportError:
-    anthropic = None
+# Helper to configure Azure OpenAI
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-05-13")
 
-# Helper to get environment tokens
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+AGENT1_DEPLOYMENT = os.getenv("AGENT1_DEPLOYMENT", "gpt-deployment-1")
+AGENT2_DEPLOYMENT = os.getenv("AGENT2_DEPLOYMENT", "gpt-deployment-2")
 
-if openai and OPENAI_API_KEY:
-    openai.api_key = OPENAI_API_KEY
-
-# If using anthropic client
-if anthropic and ANTHROPIC_API_KEY:
-    anthropic_client = anthropic.Client(api_key=ANTHROPIC_API_KEY)
-else:
-    anthropic_client = None
+if openai and AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT:
+    openai.api_type = "azure"
+    openai.api_key = AZURE_OPENAI_API_KEY
+    openai.api_base = AZURE_OPENAI_ENDPOINT
+    openai.api_version = AZURE_OPENAI_API_VERSION
 
 
-def request_openai(prompt: str) -> str:
+def request_gpt(deployment: str, prompt: str) -> str:
+    """Call Azure OpenAI deployment and return the text response."""
     if not openai:
-        return 'openai package not installed.'
+        return "openai package not installed."
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4o",
+            engine=deployment,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
         )
-        return response['choices'][0]['message']['content'].strip()
+        return response["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        return f"Error from OpenAI: {e}"
-
-
-def request_anthropic(prompt: str) -> str:
-    if not anthropic_client:
-        return 'anthropic client not configured.'
-    try:
-        response = anthropic_client.messages.create(
-            model="claude-3-opus-20240229",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-        )
-        return response.content[0].text.strip()
-    except Exception as e:
-        return f"Error from Anthropic: {e}"
+        return f"Error from Azure OpenAI: {e}"
 
 
 def evaluate_board(board: chess.Board) -> int:
@@ -88,12 +71,10 @@ def main():
 
     if start_button:
         for move_number in range(num_moves):
-            agent = 'OpenAI' if move_number % 2 == 0 else 'Anthropic'
+            agent = "Agent 1" if move_number % 2 == 0 else "Agent 2"
+            deployment = AGENT1_DEPLOYMENT if move_number % 2 == 0 else AGENT2_DEPLOYMENT
             prompt = f"Current board in FEN: {board.fen()}\nProvide next move in algebraic notation only."
-            if agent == 'OpenAI':
-                move_str = request_openai(prompt)
-            else:
-                move_str = request_anthropic(prompt)
+            move_str = request_gpt(deployment, prompt)
 
             st.write(f"**{agent} move {move_number+1}:** {move_str}")
 

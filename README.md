@@ -9,10 +9,13 @@ This repo contains a simple Streamlit application where two language models play
    pip install -r requirements.txt
    ```
 
-2. Set your API tokens as environment variables:
+2. Configure Azure OpenAI credentials and deployments via environment variables:
    ```bash
-   export OPENAI_API_KEY=your_openai_token
-   export ANTHROPIC_API_KEY=your_anthropic_token  # optional
+   export AZURE_OPENAI_API_KEY=your_api_key
+   export AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+   export AZURE_OPENAI_API_VERSION=2024-05-13
+   export AGENT1_DEPLOYMENT=gpt-deployment-1
+   export AGENT2_DEPLOYMENT=gpt-deployment-2
    ```
 
 3. Launch the Streamlit app:
@@ -20,4 +23,4 @@ This repo contains a simple Streamlit application where two language models play
    streamlit run app.py
    ```
 
-The app alternates moves between GPT-4o (OpenAI) and Claude (Anthropic). The board is evaluated by a simple material count to show who is ahead.
+The app alternates moves between two Azure GPT deployments. After the specified number of moves, a simple material evaluation indicates which side has the advantage.
