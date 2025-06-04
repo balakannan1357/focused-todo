@@ -1,59 +1,47 @@
 import os
+import time
+import random
 import streamlit as st
 import chess
 import chess.svg
 from typing import Optional
+from streamlit.delta_generator import DeltaGenerator
 
 try:
     import openai
 except ImportError:
     openai = None
 
-try:
-    import anthropic
-except ImportError:
-    anthropic = None
+# Azure OpenAI Configuration
+AZURE_OPENAI_API_KEY = "802NW0xA2QMipBYGxGlFfgr14BwgzRS17fmR64Td367x0NGFQovsJQQJ99BFACYeBjFXJ3w3AAAAACOG4GDB"
+AZURE_OPENAI_ENDPOINT = "https://chess-codex-foundry.cognitiveservices.azure.com/"
+AZURE_OPENAI_API_VERSION = "2024-12-01-preview"
 
-# Helper to get environment tokens
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+AGENT1_DEPLOYMENT = "gpt-4.1"
+AGENT2_DEPLOYMENT = "grok-3"
 
-if openai and OPENAI_API_KEY:
-    openai.api_key = OPENAI_API_KEY
+if openai and AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT:
+    openai.api_type = "azure"
+    openai.api_key = AZURE_OPENAI_API_KEY
+    openai.api_base = AZURE_OPENAI_ENDPOINT
+    openai.api_version = AZURE_OPENAI_API_VERSION
 
-# If using anthropic client
-if anthropic and ANTHROPIC_API_KEY:
-    anthropic_client = anthropic.Client(api_key=ANTHROPIC_API_KEY)
-else:
-    anthropic_client = None
-
-
-def request_openai(prompt: str) -> str:
+def request_gpt(deployment: str, prompt: str) -> str:
+    """Call Azure OpenAI deployment and return the text response."""
     if not openai:
-        return 'openai package not installed.'
+        return "openai package not installed."
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
+            engine=deployment,
+            messages=[
+                {"role": "system", "content": "You are a creative and strong chess-playing AI."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.9,  # Add more randomness
         )
-        return response['choices'][0]['message']['content'].strip()
+        return response["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        return f"Error from OpenAI: {e}"
-
-
-def request_anthropic(prompt: str) -> str:
-    if not anthropic_client:
-        return 'anthropic client not configured.'
-    try:
-        response = anthropic_client.messages.create(
-            model="claude-3-opus-20240229",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-        )
-        return response.content[0].text.strip()
-    except Exception as e:
-        return f"Error from Anthropic: {e}"
+        return f"Error from Azure OpenAI: {e}"
 
 
 def evaluate_board(board: chess.Board) -> int:
@@ -73,9 +61,33 @@ def evaluate_board(board: chess.Board) -> int:
     return value
 
 
-def display_board(board: chess.Board):
+def display_board(board: chess.Board, container: Optional[DeltaGenerator] = None):
     svg = chess.svg.board(board=board)
-    st.components.v1.html(svg, height=400)
+    if container:
+        container.markdown(svg, unsafe_allow_html=True)
+    else:
+        st.markdown(svg, unsafe_allow_html=True)
+
+
+def build_prompt(board: chess.Board) -> str:
+    """Build a prompt including move history in SAN format safely with variation."""
+    temp_board = chess.Board()
+    history_san = []
+    for move in board.move_stack:
+        san_move = temp_board.san(move)
+        history_san.append(san_move)
+        temp_board.push(move)
+
+    player = "White" if board.turn == chess.WHITE else "Black"
+    random_hint = random.randint(1, 100000)  # Add variation
+    prompt = (
+        f"You are a chess AI playing as {player}.\n"
+        f"Current board FEN: {board.fen()}\n"
+        f"Move history: {' '.join(history_san) if history_san else 'None'}\n"
+        f"Session hint: {random_hint}\n"
+        "Your move in SAN or UCI format only. Do not explain—just return the move."
+    )
+    return prompt
 
 
 def main():
@@ -87,28 +99,49 @@ def main():
     start_button = st.button("Start Game")
 
     if start_button:
+        board_placeholder = st.empty()
+        log_placeholder = st.empty()
+        logs = []
+
         for move_number in range(num_moves):
-            agent = 'OpenAI' if move_number % 2 == 0 else 'Anthropic'
-            prompt = f"Current board in FEN: {board.fen()}\nProvide next move in algebraic notation only."
-            if agent == 'OpenAI':
-                move_str = request_openai(prompt)
-            else:
-                move_str = request_anthropic(prompt)
+            agent = "Agent 1" if board.turn == chess.WHITE else "Agent 2"
+            deployment = AGENT1_DEPLOYMENT if board.turn == chess.WHITE else AGENT2_DEPLOYMENT
 
-            st.write(f"**{agent} move {move_number+1}:** {move_str}")
+            prompt = build_prompt(board)
+            move_str = request_gpt(deployment, prompt)
+            logs.append(f"**{agent} move {move_number+1}:** {move_str}")
+            log_placeholder.markdown("\n".join(logs))
 
+            # Try SAN, then fallback to UCI if valid length
             try:
-                move = board.parse_san(move_str)
-                board.push(move)
+                try:
+                    move = board.parse_san(move_str)
+                except ValueError:
+                    if len(move_str) in [4, 5]:
+                        move = chess.Move.from_uci(move_str)
+                        if move not in board.legal_moves:
+                            raise ValueError(f"Illegal UCI move: {move_str}")
+                    else:
+                        raise ValueError(f"Invalid UCI format: {move_str}")
+
+                if move in board.legal_moves:
+                    board.push(move)
+                else:
+                    raise ValueError("Move not legal")
+
             except Exception as e:
-                st.write(f"Invalid move from {agent}: {e}")
+                logs.append(f"Invalid move from {agent}: {e}")
+                log_placeholder.markdown("\n".join(logs))
                 break
 
-            display_board(board)
+            display_board(board, board_placeholder)
 
             if board.is_game_over():
-                st.write("Game over!", board.result())
+                logs.append(f"Game over! Result: {board.result()}")
+                log_placeholder.markdown("\n".join(logs))
                 break
+
+            time.sleep(1)
 
         score = evaluate_board(board)
         if score > 0:
