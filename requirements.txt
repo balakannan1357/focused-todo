@@ -3,3 +3,7 @@ streamlit
 openai
 anthropic
 python-chess
+pandas
+altair
+requests
+beautifulsoup4
