@@ -21,3 +21,21 @@ This repo contains a simple Streamlit application where two language models play
    ```
 
 The app alternates moves between GPT-4o (OpenAI) and Claude (Anthropic). The board is evaluated by a simple material count to show who is ahead.
+
+## Tamil Nadu Election Dashboard
+
+This dashboard explores Tamil Nadu assembly election results from 2006–2021 using the official data published by the Election Commission of India.
+
+First fetch the dataset (requires internet access):
+
+```bash
+python fetch_eci_data.py
+```
+
+Then launch the dashboard:
+
+```bash
+streamlit run election_dashboard.py
+```
+
+The scraping script downloads constituency wise results for each election year and stores them in `data/tn_elections.csv` which the dashboard reads.
